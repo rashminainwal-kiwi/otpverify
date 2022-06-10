@@ -1,16 +1,21 @@
-from rest_framework import serializers, validators
-from django.contrib.auth.models import User
-
+from rest_framework import serializers
 import validation_message
+from app.models import UserDetails
 
 '''  authentication serializer  '''
 
 
 class RegistrationSerializer(serializers.ModelSerializer):
-    name = serializers.CharField(
-        required=True, min_length=validation_message.CHAR_LIMIT_SIZE['name_min'],
-        max_length=validation_message.CHAR_LIMIT_SIZE['name_max'],
-        error_messages=validation_message.VALIDATION['name']
+    first_name = serializers.CharField(
+        required=True, min_length=validation_message.CHAR_LIMIT_SIZE['firstname_min'],
+        max_length=validation_message.CHAR_LIMIT_SIZE['firstname_max'],
+        error_messages=validation_message.VALIDATION['firstname']
+    )
+
+    last_name = serializers.CharField(
+        required=True, min_length=validation_message.CHAR_LIMIT_SIZE['lastname_min'],
+        max_length=validation_message.CHAR_LIMIT_SIZE['lastname_max'],
+        error_messages=validation_message.VALIDATION['lastname']
     )
 
     email = serializers.EmailField(required=True, error_messages=validation_message.VALIDATION['email'])
@@ -21,71 +26,47 @@ class RegistrationSerializer(serializers.ModelSerializer):
         error_messages=validation_message.VALIDATION['username']
     )
 
-    password = serializers.CharField(
-        min_length=validation_message.CHAR_LIMIT_SIZE['password_min'],
-        max_length=validation_message.CHAR_LIMIT_SIZE['password_max'],
-        error_messages=validation_message.VALIDATION['password'],
-        write_only=True)
+    password = serializers.CharField(required=True, style={'input_type': 'password'},
+                                     min_length=validation_message.CHAR_LIMIT_SIZE['password_min'],
+                                     max_length=validation_message.CHAR_LIMIT_SIZE['password_max'],
+                                     error_messages=validation_message.VALIDATION['password'],
+                                     write_only=True)
 
-    password2 = serializers.CharField(
-        min_length=validation_message.CHAR_LIMIT_SIZE['password_min'],
-        max_length=validation_message.CHAR_LIMIT_SIZE['password_max'],
-        error_messages=validation_message.VALIDATION['password2'],
-        write_only=True)
-
-    otp = serializers.CharField(max_length=6)
     is_active = serializers.BooleanField(default=False)
 
-    # password2 = serializers.CharField(style={'input_type': 'password'}, write_only=True)
+    password2 = serializers.CharField(style={'input_type': 'password'}, write_only=True)
 
     class Meta:
-        model = User
-        fields = ('id', 'name', 'email', 'username', 'password', 'password2', 'is_active', 'otp')
+        model = UserDetails
+        fields = ('id', 'first_name', 'last_name', 'email', 'username', 'password', 'password2', 'is_active')
+        extra_kwargs = {
+            'password': {'write_only': True}
+        }
+
+    def validate_email(self, email):
+        existing = UserDetails.objects.filter(email=email).first()
+        if existing:
+            raise serializers.ValidationError("Someone with that email "
+                                              "address has already registered. Was it you?")
+        return email
 
     def validate(self, data):
-        if data["password"] != data["password2"]:
-            raise serializers.ValidationError("password does not match")
+        if not data.get('password') or not data.get('password2'):
+            raise serializers.ValidationError("Please enter a password and "
+                                              "confirm it.")
+        if data.get('password') != data.get('password2'):
+            raise serializers.ValidationError("Those passwords don't match.")
         return data
 
-    def create(self, validated_data):
-        user = User.objects.create(
-            username=validated_data["username"],
-            # name=validated_data["name"],
+    def create(self, validated_data, password=None):
+        user = UserDetails.objects.create(
+            username=validated_data['username'],
+            first_name=validated_data["first_name"],
+            last_name=validated_data["last_name"],
             email=validated_data["email"],
-            # otp=validated_data["otp"],
+            password=validated_data["password"],
+            is_active=validated_data["is_active"]
         )
-
-        user.set_password(validated_data["password"])
+        # user.set_password(validated_data['password'])
         user.save()
-
-        # Validating Password and Confirm Password while Registration
-#
-# def validate_password(password_value):
-#     password_value = password_value.strip()
-#     if password != password2.:
-#          return "email is alrea"
-
-
-# def validate_email(email_value):
-#     email_value = email_value.strip()
-#     if email_value.exists():
-#         return email_value
-#     raise serializers.ValidationError({'email': 'email already exists'})
-
-
-# def validate(self, args):
-#     email = args.get('email', None)
-#     username = args.get('username', None)
-#     password = args.get('password', None)
-#     if User.objects.filter(email=email).exists():
-#         raise serializers.ValidationError({'email': 'email already exists'})
-#     if User.objects.filter(username=username).exists():
-#         raise serializers.ValidationError({'username': 'username already exists'})
-#     if args['password'] < 16:
-#         raise serializers.ValidationError({'error': "password must be less than 16"})
-#     if args['name']:
-#         for n in args['name']:
-#             if n.isdigit():
-#                 raise serializers.ValidationError({'error': "name can not be numeric"})
-#
-#     return super().validate(args)
+        return user
